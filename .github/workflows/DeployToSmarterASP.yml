@@ -1,0 +1,35 @@
+name: Deploy To SmarterASP
+
+on:
+  workflow_call:
+
+    inputs:
+
+      configuration:
+        required: false
+        default: Release
+        type: string
+jobs:
+
+  deploy:
+
+    runs-on: windows-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Publish
+        shell: pwsh
+        run: |
+          ./scripts/Publish.ps1 `
+            -Configuration "${{ inputs.configuration }}"
+
+      - name: Deploy
+        shell: pwsh
+        run: |
+          ./scripts/Deploy-SmarterASP.ps1

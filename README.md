@@ -1,12 +1,11 @@
 # deployment-toolkit
 
-A reusable toolkit for automating the build and deployment of ASP.NET Core applications.
+Reusable GitHub Actions workflows and PowerShell scripts for building and deploying ASP.NET Core applications.
 
 ## Features
 
-- Reusable GitHub Actions workflows
-- PowerShell deployment scripts
-- Build and publish automation
-- Multi-host support (IIS, SmarterASP.NET, Azure, Linux)
-- Standardized deployment pipeline across projects
-- Easily extensible for new hosting providers
+- Automatic project discovery
+- Publish and package applications
+- Reusable GitHub workflows
+- SmarterASP deployment
+- IIS deployment (coming soon)
