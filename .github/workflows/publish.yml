@@ -1,0 +1,80 @@
+name: Publish via Web Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Application Name
+        required: true
+        type: string
+
+      project:
+        description: Path to the ASP.NET Core project (.csproj)
+        required: false
+        type: string
+
+      deployment:
+        description: Deployment Strategy
+        required: true
+        type: choice
+        default: webdeploy
+        options:
+          - webdeploy
+
+jobs:
+  publish:
+    runs-on: windows-latest
+
+    env:
+      DOTNET_VERSION: "9.0.x"
+
+    steps:
+      - name: Checkout Application
+        uses: actions/checkout@v4
+
+      - name: Checkout Deployment Toolkit
+        uses: actions/checkout@v4
+        with:
+          repository: YOUR_ORGANIZATION/deployment-toolkit
+          path: deployment-toolkit
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore Dependencies
+        run: dotnet restore
+
+      - name: Build AppSettings
+        shell: pwsh
+        run: |
+          ./deployment-toolkit/scripts/Build-AppSettings.ps1 `
+            -RepositoryRoot "${{ github.workspace }}" `
+            -ToolkitRoot "${{ github.workspace }}/deployment-toolkit"
+
+      - name: Generate Publish Profile
+        if: inputs.deployment == 'webdeploy'
+        shell: pwsh
+        run: |
+          ./deployment-toolkit/scripts/Generate-PublishProfile.ps1 `
+            -RepositoryRoot "${{ github.workspace }}" `
+            -ToolkitRoot "${{ github.workspace }}/deployment-toolkit" `
+            -AppName "${{ inputs.app }}" `
+            -Project "${{ inputs.project }}"
+
+      - name: Publish via Web Deploy
+        if: inputs.deployment == 'webdeploy'
+        shell: pwsh
+        run: |
+          if ("${{ inputs.project }}" -ne "") {
+            dotnet publish `
+              "${{ inputs.project }}" `
+              -c Release `
+              /p:PublishProfile=WebDeploy
+          }
+          else {
+            dotnet publish `
+              -c Release `
+              /p:PublishProfile=WebDeploy
+          }
