@@ -70,14 +70,16 @@ Each backend repository owns its own configuration mapping:
 3. `GenerateAppSettings.ps1` reads that map and, for every entry with a non-empty environment variable, patches the value into `appsettings.json` before it's deployed.
 4. This toolkit only handles publishing and deploying artifacts — it never needs to know what any of those config keys mean.
 
-## Secrets
+## Secrets and Variables
 
-Declare these as repository or [GitHub Environment](https://docs.github.com/actions/deployment/targeting-different-environments/using-environments-for-deployment) secrets in the **consuming repository**:
+The deploy jobs load **both** [GitHub Environment Variables](https://docs.github.com/actions/learn-github-actions/variables) (`vars`) and [Environment Secrets](https://docs.github.com/actions/security-guides/using-secrets-in-github-actions) into the job's environment before deploying — a `Load environment configuration` step dumps `toJSON(vars)` and `toJSON(secrets)` into `$GITHUB_ENV` generically, so the toolkit never needs to know a consuming project's variable/secret names ahead of time. Note that **variables are not covered by `secrets: inherit`** — they're picked up automatically because the job is scoped to the environment (`environment: UAT` / `environment: Production`), no extra wiring needed on the caller's side.
 
-- `SITE_URL`, `MSDEPLOY_URL`, `MSDEPLOY_SITE`, `MSDEPLOY_USERNAME`, `MSDEPLOY_PASSWORD` — required by every deploy, used to build the Web Deploy publish profile.
-- Anything referenced on the right-hand side of your `deployment/appsettings.config.ps1` map (e.g. `DB_CONNECTION`, `JWT_SECRET`, `SENDGRID_API_KEY`, ...).
+Split what you configure in each [GitHub Environment](https://docs.github.com/actions/deployment/targeting-different-environments/using-environments-for-deployment) (`UAT` / `Production`) accordingly:
 
-Using GitHub Environments (named `UAT` and `Production`, matching the `environment:` field in `deploy-uat.yml`/`deploy-prod.yml`) lets you reuse the same secret names across environments with different values, and lets you gate production with required reviewers.
+- **Variables** (plain text, fine to view in the UI): `SITE_URL`, `MSDEPLOY_URL`, `MSDEPLOY_SITE`, `MSDEPLOY_USERNAME` — none of these are secret on their own (they're URLs/identifiers, not credentials).
+- **Secrets** (masked, encrypted): `MSDEPLOY_PASSWORD` — the only one this toolkit itself requires — plus anything referenced on the right-hand side of your `deployment/appsettings.config.ps1` map (e.g. `DB_CONNECTION`, `JWT_SECRET`, `SENDGRID_API_KEY`, ...), since those are genuinely sensitive.
+
+Using GitHub Environments this way lets you reuse the same variable/secret names across `UAT` and `Production` with different values per environment, and lets you gate production with required reviewers.
 
 ## Usage example
 

@@ -19,14 +19,6 @@ on:
         type: string
         default: '9.0.x'
     secrets:
-      SITE_URL:
-        required: true
-      MSDEPLOY_URL:
-        required: true
-      MSDEPLOY_SITE:
-        required: true
-      MSDEPLOY_USERNAME:
-        required: true
       MSDEPLOY_PASSWORD:
         required: true
 
@@ -56,19 +48,25 @@ jobs:
         with:
           dotnet-version: ${{ inputs.dotnet_version }}
 
-      - name: Load application secrets
+      - name: Load environment configuration
         shell: pwsh
         env:
+          VARS_CONTEXT: ${{ toJSON(vars) }}
           SECRETS_CONTEXT: ${{ toJSON(secrets) }}
         run: |
-          $secrets = $env:SECRETS_CONTEXT | ConvertFrom-Json
-
-          foreach ($property in $secrets.PSObject.Properties) {
-              $delimiter = [System.Guid]::NewGuid().ToString()
-              "$($property.Name)<<$delimiter" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-              "$($property.Value)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-              "$delimiter" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          function Set-EnvFromJson([string]$json) {
+              $parsed = $json | ConvertFrom-Json
+              foreach ($property in $parsed.PSObject.Properties) {
+                  $delimiter = [System.Guid]::NewGuid().ToString()
+                  "$($property.Name)<<$delimiter" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+                  "$($property.Value)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+                  "$delimiter" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              }
           }
+
+          # Variables first, secrets second, so a secret wins on any name collision.
+          Set-EnvFromJson $env:VARS_CONTEXT
+          Set-EnvFromJson $env:SECRETS_CONTEXT
 
       - name: Deploy with Web Deploy
         shell: pwsh
