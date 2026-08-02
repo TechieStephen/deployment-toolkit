@@ -54,19 +54,22 @@ jobs:
           VARS_CONTEXT: ${{ toJSON(vars) }}
           SECRETS_CONTEXT: ${{ toJSON(secrets) }}
         run: |
-          function Set-EnvFromJson([string]$json) {
+          function Set-EnvFromJson([string]$json, [string]$source) {
               $parsed = $json | ConvertFrom-Json
               foreach ($property in $parsed.PSObject.Properties) {
                   $delimiter = [System.Guid]::NewGuid().ToString()
                   "$($property.Name)<<$delimiter" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
                   "$($property.Value)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
                   "$delimiter" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+                  # Name and source only -- never the value, even for Variables.
+                  Write-Host "[ENV] $($property.Name) <- $source"
               }
           }
 
           # Variables first, secrets second, so a secret wins on any name collision.
-          Set-EnvFromJson $env:VARS_CONTEXT
-          Set-EnvFromJson $env:SECRETS_CONTEXT
+          Set-EnvFromJson $env:VARS_CONTEXT "vars"
+          Set-EnvFromJson $env:SECRETS_CONTEXT "secrets"
 
       - name: Deploy with Web Deploy
         shell: pwsh

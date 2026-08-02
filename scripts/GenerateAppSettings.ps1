@@ -81,12 +81,12 @@ foreach ($mapping in $configMap.GetEnumerator()) {
     $environmentVariable = $mapping.Value
     $value = Get-EnvironmentVariable -Name $environmentVariable
 
-    Write-Host "[CONFIG] $jsonPath => $environmentVariable = $value"
-
     if ([string]::IsNullOrWhiteSpace($value)) {
-        Write-WarningLog "Config value for '$jsonPath' is null or empty. Skipping update."
+        Write-WarningLog "[CONFIG] $jsonPath => $environmentVariable : MISSING, skipping update."
         continue
     }
+
+    Write-Host "[CONFIG] $jsonPath => $environmentVariable : set ($($value.Length) chars)"
 
     Set-ConfigValue `
         -Object $appSettings `
