@@ -27,14 +27,11 @@ deployment-toolkit/
 │   └── NOTE.md
 ├── scripts/
 │   ├── Publish.ps1                # discover project, dotnet publish, zip
-│   ├── Deploy-WebDeploy.ps1       # generate appsettings + publish profile, deploy via dotnet publish /p:PublishProfile
+│   ├── Deploy-WebDeploy.ps1       # generate appsettings, sync artifacts/publish to the target via msdeploy.exe directly
 │   ├── GenerateAppSettings.ps1    # merge deployment/appsettings.config.ps1 + env vars into appsettings.json
-│   ├── GeneratePublishProfile.ps1 # render templates/WebDeploy.pubxml with connection details
 │   ├── Compress-Publish.ps1       # zip artifacts/publish -> artifacts/publish.zip
 │   ├── ConfigHelpers.ps1          # JSON read/save/patch helpers
 │   └── Helpers.ps1                # project discovery, logging, misc shared helpers
-├── templates/
-│   └── WebDeploy.pubxml
 └── README.md
 ```
 
@@ -43,10 +40,9 @@ deployment-toolkit/
 - `scripts/Publish.ps1` publishes the ASP.NET Core web project and creates the standard artifacts:
   - `artifacts/publish/`
   - `artifacts/publish.zip` (unless `-SkipZip` is passed)
-- `scripts/Deploy-WebDeploy.ps1` regenerates `appsettings.json` with real secrets, generates a temporary Web Deploy publish profile from `templates/WebDeploy.pubxml`, and runs `dotnet publish /p:PublishProfile=...` to push the app to the target site.
+- `scripts/Deploy-WebDeploy.ps1` regenerates `appsettings.json` with real secrets, then calls `msdeploy.exe -verb:sync` directly to push the already-published `artifacts/publish` folder to the target site — no rebuild, so it works from a fresh runner that only has the downloaded build artifact (not the original `bin`/`obj` state from the build job).
 - `scripts/GenerateAppSettings.ps1` / `scripts/ConfigHelpers.ps1` merge values from environment variables into `appsettings.json`, driven entirely by the consuming repo's `deployment/appsettings.config.ps1`.
-- `scripts/GeneratePublishProfile.ps1` fills in `templates/WebDeploy.pubxml` using `SITE_URL`, `MSDEPLOY_URL`, `MSDEPLOY_SITE`, `MSDEPLOY_USERNAME`, `MSDEPLOY_PASSWORD`.
-- `scripts/Helpers.ps1` contains `Get-WebProject` (auto-discovers the single `Microsoft.NET.Sdk.Web` project, or validates `-Project` if given) and `Get-MSDeploy` (fails fast if Web Deploy isn't installed on the runner).
+- `scripts/Helpers.ps1` contains `Get-WebProject` (auto-discovers the single `Microsoft.NET.Sdk.Web` project, or validates `-Project` if given) and `Get-MSDeploy` (locates `msdeploy.exe`, fails fast with a clear error if Web Deploy isn't installed on the runner).
 
 ## Visibility
 
@@ -76,7 +72,7 @@ The deploy jobs load **both** [GitHub Environment Variables](https://docs.github
 
 Split what you configure in each [GitHub Environment](https://docs.github.com/actions/deployment/targeting-different-environments/using-environments-for-deployment) (`UAT` / `Production`) accordingly:
 
-- **Variables** (plain text, fine to view in the UI): `SITE_URL`, `MSDEPLOY_URL`, `MSDEPLOY_SITE`, `MSDEPLOY_USERNAME` — none of these are secret on their own (they're URLs/identifiers, not credentials).
+- **Variables** (plain text, fine to view in the UI): `MSDEPLOY_URL`, `MSDEPLOY_SITE`, `MSDEPLOY_USERNAME` are required for the `msdeploy.exe` sync command; `SITE_URL` is optional (logged for visibility only, not otherwise used). None of these are secret on their own — they're URLs/identifiers, not credentials.
 - **Secrets** (masked, encrypted): `MSDEPLOY_PASSWORD` — the only one this toolkit itself requires — plus anything referenced on the right-hand side of your `deployment/appsettings.config.ps1` map (e.g. `DB_CONNECTION`, `JWT_SECRET`, `SENDGRID_API_KEY`, ...), since those are genuinely sensitive.
 
 Using GitHub Environments this way lets you reuse the same variable/secret names across `UAT` and `Production` with different values per environment, and lets you gate production with required reviewers.

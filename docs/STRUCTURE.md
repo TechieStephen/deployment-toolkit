@@ -11,14 +11,11 @@ deployment-toolkit/
 │   └── STRUCTURE.md # this file
 ├── scripts/
 │   ├── Publish.ps1                # discover web project, dotnet restore/publish to artifacts/publish, zip, generate appsettings
-│   ├── Deploy-WebDeploy.ps1       # Get-MSDeploy preflight, regenerate appsettings, generate publish profile, dotnet publish /p:PublishProfile
+│   ├── Deploy-WebDeploy.ps1       # Get-MSDeploy preflight, regenerate appsettings, msdeploy.exe -verb:sync directly
 │   ├── GenerateAppSettings.ps1    # apply deployment/appsettings.config.ps1 mapping (env vars) onto appsettings.json
-│   ├── GeneratePublishProfile.ps1 # render templates/WebDeploy.pubxml into Properties/PublishProfiles/<Profile>.pubxml
 │   ├── Compress-Publish.ps1       # zip artifacts/publish -> artifacts/publish.zip
 │   ├── ConfigHelpers.ps1          # Read-AppSettings / Save-AppSettings / Set-ConfigValue
 │   └── Helpers.ps1                # Get-WebProject, Get-MSDeploy, New-CleanDirectory, Get-(Required)EnvironmentVariable, logging helpers
-├── templates/
-│   └── WebDeploy.pubxml   # MSDeploy publish profile template with __PLACEHOLDER__ tokens
 └── README.md
 
 Notes
@@ -45,7 +42,7 @@ Notes
 
   1. Push to `main`/`uat`/`production` triggers the consuming repo's `ci-cd.yml`. `main` is the trunk (build/validate only); `production` is a separate branch that only moves forward when someone deliberately merges into it, since a private repo on GitHub Free can't use branch protection to block direct pushes to `main` itself.
   2. It calls this toolkit's `build.yml`, which checks out the app repo + toolkit and runs `Publish.ps1` (build & package), uploading `artifacts/` as a workflow artifact.
-  3. It calls `deploy-uat.yml` (on `uat`) or `deploy-prod.yml` (on `production`) with `secrets: inherit`. That job checks out the app repo + toolkit, downloads the artifact, loads every inherited secret into the job environment, and runs `Deploy-WebDeploy.ps1`, which patches `appsettings.json` via `GenerateAppSettings.ps1` and deploys via a generated Web Deploy publish profile.
+  3. It calls `deploy-uat.yml` (on `uat`) or `deploy-prod.yml` (on `production`) with `secrets: inherit`. That job checks out the app repo + toolkit, downloads the artifact, loads every inherited variable/secret into the job environment, and runs `Deploy-WebDeploy.ps1`, which patches `appsettings.json` via `GenerateAppSettings.ps1` and syncs `artifacts/publish` straight to the target via `msdeploy.exe -verb:sync` (no rebuild, no .NET SDK needed in this job).
 
 - Extending the toolkit:
   - Add a new `scripts/Deploy-<Provider>.ps1` for a hosting provider that isn't Web Deploy (e.g. plain FTP, Azure App Service).

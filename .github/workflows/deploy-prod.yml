@@ -6,18 +6,10 @@ on:
       artifact_name:
         required: true
         type: string
-      configuration:
-        required: false
-        type: string
-        default: Release
       project:
         required: false
         type: string
         default: ''
-      dotnet_version:
-        required: false
-        type: string
-        default: '9.0.x'
     secrets:
       MSDEPLOY_PASSWORD:
         required: true
@@ -42,11 +34,6 @@ jobs:
         with:
           name: ${{ inputs.artifact_name }}
           path: artifacts
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ inputs.dotnet_version }}
 
       - name: Load environment configuration
         shell: pwsh
@@ -77,5 +64,4 @@ jobs:
           ./deployment-toolkit/scripts/Deploy-WebDeploy.ps1 `
             -RepositoryRoot ${{ github.workspace }} `
             -ToolkitRoot ./deployment-toolkit `
-            -Project "${{ inputs.project }}" `
-            -Configuration "${{ inputs.configuration }}"
+            -Project "${{ inputs.project }}"

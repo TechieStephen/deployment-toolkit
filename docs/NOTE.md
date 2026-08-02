@@ -21,13 +21,9 @@ deployment-toolkit/
 │   ├── Publish.ps1
 │   ├── Deploy-WebDeploy.ps1
 │   ├── GenerateAppSettings.ps1
-│   ├── GeneratePublishProfile.ps1
 │   ├── Compress-Publish.ps1
 │   ├── ConfigHelpers.ps1
 │   └── Helpers.ps1
-│
-├── templates/
-│   └── WebDeploy.pubxml
 │
 └── docs/
 ```
@@ -48,7 +44,7 @@ artifacts/
 └── publish.zip
 ```
 
-- Generate a Web Deploy publish profile from a template and deploy via `dotnet publish /p:PublishProfile=...`.
+- Sync the already-published output to a Web Deploy target via `msdeploy.exe -verb:sync` directly (no rebuild in the deploy job).
 - Provide reusable GitHub Actions workflows (`build.yml`, `deploy-uat.yml`, `deploy-prod.yml`).
 - Contain shared deployment logic only — no project-specific config keys or secret names.
 
@@ -100,7 +96,7 @@ Load all inherited secrets into the job environment
         ▼
 Deploy-WebDeploy.ps1
         │  ├─ GenerateAppSettings.ps1  (patches appsettings.json using deployment/appsettings.config.ps1)
-        │  └─ GeneratePublishProfile.ps1 + dotnet publish /p:PublishProfile=WebDeploy
+        │  └─ msdeploy.exe -verb:sync (syncs artifacts/publish to the target directly)
         ▼
 Deployed
 ```
@@ -108,7 +104,7 @@ Deployed
 Notes:
 
 - `Publish.ps1` (in `build.yml`) also calls `GenerateAppSettings.ps1`, but at that point no environment-specific secrets are set, so it's effectively a no-op there — it exists so `Publish.ps1` can also be run locally with secrets already in the environment. The real config injection happens in the deploy job, where `Deploy-WebDeploy.ps1` calls `GenerateAppSettings.ps1` again against the downloaded artifact, after every inherited secret has been loaded.
-- `deploy-uat.yml` / `deploy-prod.yml` run on `windows-latest` because Web Deploy (`msdeploy.exe`) is Windows-only; `Deploy-WebDeploy.ps1` calls `Get-MSDeploy` up front to fail fast if it's missing.
+- `deploy-uat.yml` / `deploy-prod.yml` run on `windows-latest` because Web Deploy (`msdeploy.exe`) is Windows-only; `Deploy-WebDeploy.ps1` calls `Get-MSDeploy` up front to fail fast if it's missing. Neither workflow needs a .NET SDK anymore — `Deploy-WebDeploy.ps1` never invokes `dotnet`, only `msdeploy.exe` directly, so the deploy job doesn't depend on `bin`/`obj` state carrying over from the build job's runner.
 - A third environment, `test`, is reserved for running unit/integration tests (not a deploy target). It isn't wired into any workflow yet — see Roadmap.
 
 ---
@@ -127,7 +123,7 @@ Notes:
 ## Roadmap
 
 ### Done
-- `Publish.ps1`, `Deploy-WebDeploy.ps1`, `GenerateAppSettings.ps1`, `GeneratePublishProfile.ps1`.
+- `Publish.ps1`, `Deploy-WebDeploy.ps1` (direct `msdeploy.exe` sync, no rebuild needed in the deploy job), `GenerateAppSettings.ps1`.
 - Reusable `build.yml` / `deploy-uat.yml` / `deploy-prod.yml` workflows with generic secret forwarding and environment gating.
 - Migrated `exampro-backend` to call the toolkit's reusable workflows instead of copying them.
 
