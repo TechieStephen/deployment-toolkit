@@ -1,115 +1,102 @@
 param(
-    [string]$Project,
-    [string]$RepositoryRoot = (Get-Location).Path,
-    [string]$Configuration = "Release",
-    [string]$Output = "artifacts",
+    [Parameter(Mandatory)]
+    [string]$RepositoryRoot,
 
-    [string]$Runtime,
-    [switch]$SelfContained,
-    [string]$Environment = "Production",
-    [switch]$EnableStdOutLog,
-    [string]$Project
+    [string]$ToolkitRoot,
+
+    [string]$Project,
+
+    [string]$Configuration = "Release",
+
+    [string]$Output = "artifacts/publish",
+
+    [switch]$SkipZip
 )
 
 $ErrorActionPreference = "Stop"
 
-$scriptRoot = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
-. "$scriptRoot/Helpers.ps1"
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+. (Join-Path $scriptRoot "Helpers.ps1")
 
 Write-Host ""
-Write-Host "========== Publish =========="
+Write-Host "===== Publish Application ====="
+
 Write-Info "Repository Root : $RepositoryRoot"
 Write-Info "Configuration   : $Configuration"
 Write-Info "Output          : $Output"
-Write-Info "Environment     : $Environment"
 
-if ($Runtime) {
-    Write-Info "Runtime         : $Runtime"
-}
+#
+# Locate project
+#
+$Project = Get-WebProject `
+    -RepositoryRoot $RepositoryRoot `
+    -Project $Project
 
-Write-Info "SelfContained   : $SelfContained"
-Write-Info "StdOut Log      : $EnableStdOutLog"
-Write-Host "============================="
-Write-Host ""
-
-Write-Info "Locating ASP.NET Core Web project..."
-
-if (-not $Project) {
-    $Project = Get-WebProject -RepositoryRoot $RepositoryRoot
-}
-else {
-    $Project = Get-WebProject `
-        -RepositoryRoot $RepositoryRoot `
-        -Project $Project
-}
-
-Write-Info "Web Project:"
+Write-Success "Project:"
 Write-Host "       $Project"
 
-$outputDir = Join-Path $RepositoryRoot $Output
+#
+# Prepare publish directory
+#
+$publishOutput = Join-Path `
+    $RepositoryRoot `
+    $Output
 
-if (!(Test-Path $outputDir)) {
-    Write-Info "Creating output directory..."
-    New-Item -ItemType Directory -Path $outputDir | Out-Null
-}
+New-CleanDirectory `
+    -Path $publishOutput
 
-$publishDir = Join-Path $outputDir "publish"
+#
+# Publish
+#
+Write-Host ""
+Write-Host "===== dotnet restore ====="
 
-if (Test-Path $publishDir) {
-    Write-Info "Cleaning previous publish output..."
-    Remove-Item $publishDir -Recurse -Force
-}
-
-Write-Info "Restoring NuGet packages..."
-
-dotnet restore "$Project"
-
-if ($LASTEXITCODE -ne 0) {
-    Write-ErrorLog "Package restore failed."
-}
-
-$publishArgs = @(
-    "publish"
-    $Project
-    "-c"
-    $Configuration
-    "-o"
-    $publishDir
-    "--no-restore"
-)
-
-if ($Runtime) {
-    $publishArgs += @(
-        "-r"
-        $Runtime
-    )
-}
-
-if ($SelfContained) {
-    $publishArgs += "--self-contained"
-}
-else {
-    $publishArgs += "--no-self-contained"
-}
-
-$publishArgs += "/p:EnvironmentName=$Environment"
-
-if ($EnableStdOutLog) {
-    $publishArgs += "/p:AspNetCoreHostedModeStdoutLogEnabled=true"
-}
-
-Write-Info "Publishing application..."
-
-& dotnet $publishArgs
+dotnet restore $Project
 
 if ($LASTEXITCODE -ne 0) {
-    Write-ErrorLog "Publish failed."
+    throw "dotnet restore failed."
+}
+
+Write-Host "===== dotnet publish ====="
+
+dotnet publish `
+    $Project `
+    --configuration $Configuration `
+    --output $publishOutput
+
+if ($LASTEXITCODE -ne 0) {
+    throw "dotnet publish failed."
+}
+
+Write-Success "Publish completed."
+
+#
+# Generate appsettings.json in publish output
+#
+Write-Host ""
+Write-Host "===== Generate AppSettings ====="
+
+& (Join-Path $scriptRoot "GenerateAppSettings.ps1") `
+    -ToolkitRoot $ToolkitRoot `
+    -RepositoryRoot $RepositoryRoot `
+    -Project $Project `
+    -AppSettingsPath (Join-Path $publishOutput "appsettings.json")
+
+#
+# Compress
+#
+if (-not $SkipZip) {
+
+    Write-Host ""
+    Write-Host "===== Compress Publish ====="
+
+    & (Join-Path $scriptRoot "Compress-Publish.ps1") `
+        -RepositoryRoot $RepositoryRoot `
+        -Output "artifacts"
 }
 
 Write-Host ""
-Write-Success "Publish completed successfully."
+Write-Success "Publish finished successfully."
 
-Write-Info "Publish Directory:"
-Write-Host "       $publishDir"
-
-return $publishDir
+return $publishOutput

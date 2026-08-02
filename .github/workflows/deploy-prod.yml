@@ -1,0 +1,80 @@
+name: Deploy to Prod
+
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        required: true
+        type: string
+      configuration:
+        required: false
+        type: string
+        default: Release
+      project:
+        required: false
+        type: string
+        default: ''
+      dotnet_version:
+        required: false
+        type: string
+        default: '9.0.x'
+    secrets:
+      SITE_URL:
+        required: true
+      MSDEPLOY_URL:
+        required: true
+      MSDEPLOY_SITE:
+        required: true
+      MSDEPLOY_USERNAME:
+        required: true
+      MSDEPLOY_PASSWORD:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: windows-latest
+    environment: Production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout deployment toolkit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/deployment-toolkit
+          ref: main
+          path: deployment-toolkit
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: artifacts
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet_version }}
+
+      - name: Load application secrets
+        shell: pwsh
+        env:
+          SECRETS_CONTEXT: ${{ toJSON(secrets) }}
+        run: |
+          $secrets = $env:SECRETS_CONTEXT | ConvertFrom-Json
+
+          foreach ($property in $secrets.PSObject.Properties) {
+              $delimiter = [System.Guid]::NewGuid().ToString()
+              "$($property.Name)<<$delimiter" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              "$($property.Value)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+              "$delimiter" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          }
+
+      - name: Deploy with Web Deploy
+        shell: pwsh
+        run: |
+          ./deployment-toolkit/scripts/Deploy-WebDeploy.ps1 `
+            -RepositoryRoot ${{ github.workspace }} `
+            -ToolkitRoot ./deployment-toolkit `
+            -Project "${{ inputs.project }}" `
+            -Configuration "${{ inputs.configuration }}"

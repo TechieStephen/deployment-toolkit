@@ -2,20 +2,24 @@ deployment-toolkit/
 ├── .git/ (repo metadata)
 ├── .github/
 │   └── workflows/
-│       ├── DeployToIIS.yml        # reusable workflow: publish -> Deploy-IIS.ps1
-│       └── DeployToSmarterASP.yml # reusable workflow: publish -> Deploy-SmarterASP.ps1
+│       ├── build.yml        # reusable workflow: checkout app+toolkit -> Publish.ps1 -> upload artifact
+│       ├── deploy-uat.yml   # reusable workflow: checkout app+toolkit -> download artifact -> Deploy-WebDeploy.ps1 (environment: UAT)
+│       └── deploy-prod.yml  # reusable workflow: same as above (environment: Production)
 ├── docs/
-│   ├── README.md                  # docs index and guidance
-│   ├── Build-AppSettings.sample.ps1 # sample merge-based Build-AppSettings script
-│   └── STRUCTURE.md               # this file
+│   ├── README.md   # docs index
+│   ├── NOTE.md     # architecture, deployment flow, appsettings.config.ps1 contract
+│   └── STRUCTURE.md # this file
 ├── scripts/
-│   ├── Publish.ps1                # discover web project, publish to artifacts/publish and create publish.zip
-│   ├── Deploy-SmarterASP.ps1      # deploy publish.zip via FTP to SmarterASP
-│   ├── Deploy-IIS.ps1             # copy published files to an IIS physical path
-│   └── Helpers.ps1                # shared functions: Get-WebProject, Compress-PublishArtifact
-├── README.md                      # repository overview and usage
-├── NOTE.md
-└── (other files)
+│   ├── Publish.ps1                # discover web project, dotnet restore/publish to artifacts/publish, zip, generate appsettings
+│   ├── Deploy-WebDeploy.ps1       # Get-MSDeploy preflight, regenerate appsettings, generate publish profile, dotnet publish /p:PublishProfile
+│   ├── GenerateAppSettings.ps1    # apply deployment/appsettings.config.ps1 mapping (env vars) onto appsettings.json
+│   ├── GeneratePublishProfile.ps1 # render templates/WebDeploy.pubxml into Properties/PublishProfiles/<Profile>.pubxml
+│   ├── Compress-Publish.ps1       # zip artifacts/publish -> artifacts/publish.zip
+│   ├── ConfigHelpers.ps1          # Read-AppSettings / Save-AppSettings / Set-ConfigValue
+│   └── Helpers.ps1                # Get-WebProject, Get-MSDeploy, New-CleanDirectory, Get-(Required)EnvironmentVariable, logging helpers
+├── templates/
+│   └── WebDeploy.pubxml   # MSDeploy publish profile template with __PLACEHOLDER__ tokens
+└── README.md
 
 Notes
 - Artifact output (standard):
@@ -28,17 +32,22 @@ Notes
 
   my-backend-repo/
   ├── src/
-  ├── appsettings.json             # base configuration (kept in repo)
-  └── deployment/
-      └── Build-AppSettings.ps1    # repo-specific script that merges secrets/overrides into deployment/appsettings.{Environment}.json
+  │   └── <ProjectName>/
+  │       ├── appsettings.json         # base configuration, checked into source with empty/placeholder secrets
+  │       └── Properties/PublishProfiles/ # generated at deploy time, not checked in
+  ├── deployment/
+  │   └── appsettings.config.ps1       # $configMap: "Json:Path" -> "ENV_VAR_NAME"
+  └── .github/
+      └── workflows/
+          └── ci-cd.yml                # thin orchestrator calling this toolkit's reusable workflows
 
 - How the flow works (high level):
 
-  1. Backend repo CI checks out code and runs `deployment/Build-AppSettings.ps1` to produce merged appsettings
-  2. CI calls `deployment-toolkit` workflow to `./scripts/Publish.ps1` (build & package)
-  3. CI calls provider-specific `Deploy-<Provider>.ps1` to deploy the artifact
+  1. Push to `uat`/`main` triggers the consuming repo's `ci-cd.yml`.
+  2. It calls this toolkit's `build.yml`, which checks out the app repo + toolkit and runs `Publish.ps1` (build & package), uploading `artifacts/` as a workflow artifact.
+  3. It calls `deploy-uat.yml` (on `uat`) or `deploy-prod.yml` (on `main`) with `secrets: inherit`. That job checks out the app repo + toolkit, downloads the artifact, loads every inherited secret into the job environment, and runs `Deploy-WebDeploy.ps1`, which patches `appsettings.json` via `GenerateAppSettings.ps1` and deploys via a generated Web Deploy publish profile.
 
 - Extending the toolkit:
-  - Add new `scripts/Deploy-<Provider>.ps1` for each hosting provider
-  - Add a corresponding reusable workflow under `.github/workflows/`
-  - Keep provider-specific secrets in the consuming repository's GitHub Secrets
+  - Add a new `scripts/Deploy-<Provider>.ps1` for a hosting provider that isn't Web Deploy (e.g. plain FTP, Azure App Service).
+  - Add a corresponding reusable workflow under `.github/workflows/`.
+  - Keep provider-specific and project-specific secrets in the consuming repository's GitHub Secrets/Environments — never hardcode them here.

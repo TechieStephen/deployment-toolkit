@@ -11,52 +11,57 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$toolkitScripts = Join-Path $ToolkitRoot "scripts"
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-. (Join-Path $toolkitScripts "Helpers.ps1")
-. (Join-Path $toolkitScripts "ConfigHelpers.ps1")
+. (Join-Path $scriptRoot "Helpers.ps1")
+. (Join-Path $scriptRoot "ConfigHelpers.ps1")
 
 Write-Host ""
-Write-Host "========== Build AppSettings =========="
+Write-Host "===== Generate AppSettings ====="
+
 Write-Info "Repository Root : $RepositoryRoot"
 Write-Info "Toolkit Root    : $ToolkitRoot"
-Write-Host "======================================="
-Write-Host ""
 
-Write-Info "Locating ASP.NET Core Web project..."
+#
+# Locate Web Project
+#
+$Project = Get-WebProject `
+    -RepositoryRoot $RepositoryRoot `
+    -Project $Project
 
-if (-not $Project) {
-    $Project = Get-WebProject -RepositoryRoot $RepositoryRoot
-}
-else {
-    $Project = Get-WebProject `
-        -RepositoryRoot $RepositoryRoot `
-        -Project $Project
-}
-
-Write-Info "Web Project:"
+Write-Success "Project:"
 Write-Host "       $Project"
 
+#
+# Locate appsettings.json
+#
 if (-not $AppSettingsPath) {
 
-    $publishDir = Join-Path $RepositoryRoot "artifacts\publish"
-    $AppSettingsPath = Join-Path $publishDir "appsettings.json"
+    $AppSettingsPath = Join-Path `
+        $RepositoryRoot `
+        "artifacts\publish\appsettings.json"
 }
 
 if (!(Test-Path $AppSettingsPath)) {
-    Write-ErrorLog "appsettings.json not found: $AppSettingsPath"
+    throw "appsettings.json not found: $AppSettingsPath"
 }
 
 Write-Info "Loading appsettings.json..."
 
-$appSettings = Read-AppSettings -Path $AppSettingsPath
+$appSettings = Read-AppSettings `
+    -Path $AppSettingsPath
 
 Write-Success "appsettings.json loaded."
 
-$configFile = Join-Path $RepositoryRoot "deployment\appsettings.config.ps1"
+#
+# Load configuration mapping
+#
+$configFile = Join-Path `
+    $RepositoryRoot `
+    "deployment\appsettings.config.ps1"
 
 if (!(Test-Path $configFile)) {
-    Write-ErrorLog "Configuration file not found: $configFile"
+    throw "Configuration mapping not found: $configFile"
 }
 
 Write-Info "Loading configuration mapping..."
@@ -65,27 +70,33 @@ Write-Info "Loading configuration mapping..."
 
 Write-Success "Configuration mapping loaded."
 
+#
+# Apply environment variables
+#
 Write-Info "Applying configuration..."
 
 foreach ($mapping in $configMap.GetEnumerator()) {
 
     $jsonPath = $mapping.Key
     $environmentVariable = $mapping.Value
+    $value = Get-EnvironmentVariable -Name $environmentVariable
 
-    # Write-Info ("Mapping '{0}' <- '{1}'." -f $jsonPath, $environmentVariable)
+    Write-Host "[CONFIG] $jsonPath => $environmentVariable = $value"
 
-    $value = [Environment]::GetEnvironmentVariable($environmentVariable)
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        Write-WarningLog "Config value for '$jsonPath' is null or empty. Skipping update."
+        continue
+    }
 
-    $updated = Set-ConfigValue `
+    Set-ConfigValue `
         -Object $appSettings `
         -Path $jsonPath `
-        -Value $value
-
-    if ($updated) {
-        # Write-Success ("Updated '{0}'." -f $jsonPath)
-    }
+        -Value $value | Out-Null
 }
 
+#
+# Save
+#
 Write-Info "Saving appsettings.json..."
 
 Save-AppSettings `

@@ -1,0 +1,63 @@
+name: Build and Publish Artifact
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        required: false
+        type: string
+        default: Release
+      project:
+        required: false
+        type: string
+        default: ''
+      artifact_name:
+        required: false
+        type: string
+        default: publish-artifact
+      dotnet_version:
+        required: false
+        type: string
+        default: '9.0.x'
+    outputs:
+      artifact_name:
+        description: Name of the uploaded artifact
+        value: ${{ jobs.build.outputs.artifact_name }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_name: ${{ inputs.artifact_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout deployment toolkit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/deployment-toolkit
+          ref: main
+          path: deployment-toolkit
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet_version }}
+
+      - name: Run publish script
+        shell: pwsh
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: 1
+        run: |
+          ./deployment-toolkit/scripts/Publish.ps1 `
+            -RepositoryRoot ${{ github.workspace }} `
+            -Project "${{ inputs.project }}" `
+            -Configuration "${{ inputs.configuration }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: artifacts/
+          if-no-files-found: error

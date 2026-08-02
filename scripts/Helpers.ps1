@@ -9,10 +9,27 @@ function Get-WebProject {
 
     if ($Project) {
 
-        $projectPath = Join-Path $RepositoryRoot $Project
+        $candidatePaths = @()
 
-        if (!(Test-Path $projectPath)) {
-            Write-ErrorLog "Project not found: $projectPath"
+        if ([System.IO.Path]::IsPathRooted($Project)) {
+            $candidatePaths += $Project
+        }
+        else {
+            $candidatePaths += Join-Path $RepositoryRoot $Project
+            $candidatePaths += $Project
+        }
+
+        $projectPath = $null
+
+        foreach ($candidate in $candidatePaths) {
+            if (Test-Path $candidate) {
+                $projectPath = (Resolve-Path $candidate).Path
+                break
+            }
+        }
+
+        if (-not $projectPath) {
+            Write-ErrorLog "Project not found: $Project"
         }
 
         $content = Get-Content $projectPath -Raw
@@ -21,7 +38,7 @@ function Get-WebProject {
             Write-ErrorLog "Specified project is not an ASP.NET Core Web project."
         }
 
-        return (Resolve-Path $projectPath).Path
+        return $projectPath
     }
 
     $projects = Get-ChildItem `
@@ -157,4 +174,52 @@ function Get-DeploymentSetting {
     $variable = "$($AppName.ToUpper())_$Name"
 
     return [Environment]::GetEnvironmentVariable($variable)
+}
+
+function New-CleanDirectory {
+
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    if (Test-Path $Path) {
+
+        Remove-Item `
+            -Path $Path `
+            -Recurse `
+            -Force
+    }
+
+    New-Item `
+        -ItemType Directory `
+        -Force `
+        -Path $Path | Out-Null
+}
+
+function Get-EnvironmentVariable {
+
+    param(
+        [Parameter(Mandatory)]
+        [string]$Name,
+
+        [switch]$Required
+    )
+
+    $value = [System.Environment]::GetEnvironmentVariable($Name)
+
+    if ($Required -and [string]::IsNullOrWhiteSpace($value)) {
+        throw "Required environment variable '$Name' is not configured."
+    }
+
+    return $value
+}
+
+function Get-RequiredEnvironmentVariable {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+
+    return Get-EnvironmentVariable -Name $Name -Required
 }
