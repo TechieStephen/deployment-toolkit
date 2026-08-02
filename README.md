@@ -81,21 +81,22 @@ Using GitHub Environments (named `UAT` and `Production`, matching the `environme
 
 ## Usage example
 
-A consuming repository needs one orchestrator workflow that triggers on push and calls the reusable workflows with `secrets: inherit`:
+A consuming repository needs one orchestrator workflow that triggers on push and calls the reusable workflows with `secrets: inherit`. `main` is treated as the trunk (build/validate only, never deployed directly); a dedicated `production` branch is what actually triggers a production deploy — merging into it is a deliberate, separate step, which matters when the repo is private and can't use GitHub's native branch protection (Free plan doesn't support it on private repos):
 
 ```yaml
 name: CI/CD
 
 on:
   push:
-    branches: [main, uat]
+    branches: [main, uat, production]
+  pull_request:
 
 jobs:
   build:
     uses: TechieStephen/deployment-toolkit/.github/workflows/build.yml@main
 
   deploy-uat:
-    if: github.ref == 'refs/heads/uat'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/uat'
     needs: build
     uses: TechieStephen/deployment-toolkit/.github/workflows/deploy-uat.yml@main
     with:
@@ -103,7 +104,7 @@ jobs:
     secrets: inherit
 
   deploy-prod:
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/production'
     needs: build
     uses: TechieStephen/deployment-toolkit/.github/workflows/deploy-prod.yml@main
     with:

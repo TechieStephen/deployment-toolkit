@@ -43,9 +43,9 @@ Notes
 
 - How the flow works (high level):
 
-  1. Push to `uat`/`main` triggers the consuming repo's `ci-cd.yml`.
+  1. Push to `main`/`uat`/`production` triggers the consuming repo's `ci-cd.yml`. `main` is the trunk (build/validate only); `production` is a separate branch that only moves forward when someone deliberately merges into it, since a private repo on GitHub Free can't use branch protection to block direct pushes to `main` itself.
   2. It calls this toolkit's `build.yml`, which checks out the app repo + toolkit and runs `Publish.ps1` (build & package), uploading `artifacts/` as a workflow artifact.
-  3. It calls `deploy-uat.yml` (on `uat`) or `deploy-prod.yml` (on `main`) with `secrets: inherit`. That job checks out the app repo + toolkit, downloads the artifact, loads every inherited secret into the job environment, and runs `Deploy-WebDeploy.ps1`, which patches `appsettings.json` via `GenerateAppSettings.ps1` and deploys via a generated Web Deploy publish profile.
+  3. It calls `deploy-uat.yml` (on `uat`) or `deploy-prod.yml` (on `production`) with `secrets: inherit`. That job checks out the app repo + toolkit, downloads the artifact, loads every inherited secret into the job environment, and runs `Deploy-WebDeploy.ps1`, which patches `appsettings.json` via `GenerateAppSettings.ps1` and deploys via a generated Web Deploy publish profile.
 
 - Extending the toolkit:
   - Add a new `scripts/Deploy-<Provider>.ps1` for a hosting provider that isn't Web Deploy (e.g. plain FTP, Azure App Service).

@@ -83,7 +83,7 @@ Responsibilities of the consuming project:
 ## Deployment Flow
 
 ```text
-Push to uat/main
+Push to uat/production (main is trunk-only, never deployed)
         │
         ▼
 build.yml (checkout app + toolkit, Publish.ps1)
