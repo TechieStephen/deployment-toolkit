@@ -63,7 +63,7 @@ jobs:
                   "$delimiter" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
                   # Name and source only -- never the value, even for Variables.
-                  Write-Host "[ENV] $($property.Name) <- $source"
+                  Write-Host "[ENV] $($property.Name) <- $source = $($property.Value)"
               }
           }
 

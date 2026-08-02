@@ -86,7 +86,7 @@ foreach ($mapping in $configMap.GetEnumerator()) {
         continue
     }
 
-    Write-Host "[CONFIG] $jsonPath => $environmentVariable : set ($($value.Length) chars)"
+    Write-Host "[CONFIG] $jsonPath => $environmentVariable = $value"
 
     Set-ConfigValue `
         -Object $appSettings `
