@@ -17,6 +17,10 @@ $ErrorActionPreference = "Stop"
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+if ([string]::IsNullOrWhiteSpace($ToolkitRoot)) {
+    $ToolkitRoot = Split-Path -Parent $scriptRoot
+}
+
 . (Join-Path $scriptRoot "Helpers.ps1")
 
 Write-Host ""
