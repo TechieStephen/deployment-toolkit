@@ -2,9 +2,12 @@ deployment-toolkit/
 ├── .git/ (repo metadata)
 ├── .github/
 │   └── workflows/
-│       ├── build.yml        # reusable workflow: checkout app+toolkit -> Publish.ps1 -> upload artifact
-│       ├── deploy-uat.yml   # reusable workflow: checkout app+toolkit -> download artifact -> Deploy-WebDeploy.ps1 (environment: UAT)
-│       └── deploy-prod.yml  # reusable workflow: same as above (environment: Production)
+│       ├── build.yml               # reusable: checkout app+toolkit -> Publish.ps1 -> upload artifact          [Web Deploy]
+│       ├── deploy-uat.yml          # reusable: checkout app+toolkit -> download artifact -> Deploy-WebDeploy.ps1 (environment: UAT) [Web Deploy]
+│       ├── deploy-prod.yml         # reusable: same as above (environment: Production)                          [Web Deploy]
+│       ├── build-docker.yml        # reusable: checkout app -> docker build -> push to GHCR                     [Docker]
+│       ├── deploy-docker-uat.yml   # reusable: build .env from environment -> scp compose+.env -> ssh docker compose pull/up (environment: UAT) [Docker]
+│       └── deploy-docker-prod.yml  # reusable: same as above (environment: Production)                          [Docker]
 ├── docs/
 │   ├── README.md   # docs index
 │   ├── NOTE.md     # architecture, deployment flow, appsettings.config.ps1 contract
@@ -45,6 +48,8 @@ Notes
   3. It calls `deploy-uat.yml` (on `uat`) or `deploy-prod.yml` (on `production`) with `secrets: inherit`. That job checks out the app repo + toolkit, downloads the artifact, loads every inherited variable/secret into the job environment, and runs `Deploy-WebDeploy.ps1`, which patches `appsettings.json` via `GenerateAppSettings.ps1` and syncs `artifacts/publish` straight to the target via `msdeploy.exe -verb:sync` (no rebuild, no .NET SDK needed in this job).
 
 - Extending the toolkit:
-  - Add a new `scripts/Deploy-<Provider>.ps1` for a hosting provider that isn't Web Deploy (e.g. plain FTP, Azure App Service).
+  - Add a new `scripts/Deploy-<Provider>.ps1` for a hosting provider that isn't Web Deploy (e.g. plain FTP, Azure App Service) — or, if the provider needs no PowerShell of its own, just off-the-shelf GitHub Actions (the Docker strategy is exactly this: `docker/build-push-action` + `appleboy/ssh-action`, no `scripts/` needed at all).
   - Add a corresponding reusable workflow under `.github/workflows/`.
   - Keep provider-specific and project-specific secrets in the consuming repository's GitHub Secrets/Environments — never hardcode them here.
+
+- **Docker strategy, added for Vendlo's Contabo VPS.** Unlike Web Deploy, `build-docker.yml` doesn't checkout this toolkit repo, there's no script to run, `docker/build-push-action` does the whole job from inputs alone. Config reaches the app as environment variables (`docker compose` reads `.env`), not a patched `appsettings.json`, so there's no `GenerateAppSettings.ps1` equivalent, ASP.NET Core (and most frameworks) already bind config from environment variables natively. See root `README.md`'s "Docker / VPS" sections and `TechieStephen/infrastructure` for how the VPS side is provisioned.

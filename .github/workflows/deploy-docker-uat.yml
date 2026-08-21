@@ -1,0 +1,61 @@
+name: Docker Deploy (UAT)
+
+on:
+  workflow_call:
+    inputs:
+      compose_project_dir:
+        description: "Absolute path on the VPS where this app's docker-compose.yml lives, e.g. /opt/apps/vendlo"
+        required: true
+        type: string
+    secrets:
+      VPS_SSH_PRIVATE_KEY:
+        required: true
+      GHCR_PAT:
+        description: "PAT with read:packages, used by the VPS to pull images from GHCR"
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: UAT
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Every var/secret configured on this GitHub Environment becomes a line
+      # in .env on the VPS -- same "toolkit never needs to know a consuming
+      # project's variable/secret names ahead of time" approach the Web
+      # Deploy path uses, just handed to the container as env vars instead
+      # of patched into an appsettings.json file.
+      - name: Build .env from environment configuration
+        shell: bash
+        env:
+          VARS_CONTEXT: ${{ toJSON(vars) }}
+          SECRETS_CONTEXT: ${{ toJSON(secrets) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key)=\(.value)"' <<< "$VARS_CONTEXT" > deploy.env
+          jq -r 'to_entries[] | "\(.key)=\(.value)"' <<< "$SECRETS_CONTEXT" >> deploy.env
+          echo "TAG=${{ github.ref_name }}" >> deploy.env
+
+      - name: Copy compose file and environment to the VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ vars.VPS_HOST }}
+          username: ${{ vars.VPS_DEPLOY_USER }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          source: "docker-compose.yml,deploy.env"
+          target: ${{ inputs.compose_project_dir }}
+
+      - name: Deploy via docker compose
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.VPS_HOST }}
+          username: ${{ vars.VPS_DEPLOY_USER }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          script: |
+            cd ${{ inputs.compose_project_dir }}
+            mv deploy.env .env
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose pull
+            docker compose up -d
+            docker image prune -f

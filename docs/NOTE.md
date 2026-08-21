@@ -2,7 +2,10 @@
 
 ## Goal
 
-A reusable deployment toolkit for ASP.NET Core backend projects, so backend repos don't each carry their own copy of build/deploy GitHub Actions workflows and PowerShell scripts.
+A reusable deployment toolkit so application repos don't each carry their own copy of build/deploy GitHub Actions workflows. Hosts more than one deployment *strategy*, not tied to a single hosting target:
+
+- **Web Deploy / IIS** — ASP.NET Core, PowerShell-scripted, `msdeploy.exe` sync.
+- **Docker / VPS** — any containerized app, GHCR + `docker compose` over SSH.
 
 ---
 
@@ -13,11 +16,14 @@ deployment-toolkit/
 │
 ├── .github/
 │   └── workflows/
-│       ├── build.yml        # reusable: publish -> artifacts/publish(.zip)
-│       ├── deploy-uat.yml   # reusable: publish -> Deploy-WebDeploy.ps1 (uat environment)
-│       └── deploy-prod.yml  # reusable: publish -> Deploy-WebDeploy.ps1 (production environment)
+│       ├── build.yml               # reusable: publish -> artifacts/publish(.zip)                    [Web Deploy]
+│       ├── deploy-uat.yml          # reusable: publish -> Deploy-WebDeploy.ps1 (uat environment)      [Web Deploy]
+│       ├── deploy-prod.yml         # reusable: publish -> Deploy-WebDeploy.ps1 (production)           [Web Deploy]
+│       ├── build-docker.yml        # reusable: docker build -> push to GHCR                           [Docker]
+│       ├── deploy-docker-uat.yml   # reusable: build .env -> scp -> ssh docker compose pull/up (uat)  [Docker]
+│       └── deploy-docker-prod.yml  # reusable: same, production                                       [Docker]
 │
-├── scripts/
+├── scripts/                        # Web Deploy strategy only, Docker needs none, see below
 │   ├── Publish.ps1
 │   ├── Deploy-WebDeploy.ps1
 │   ├── GenerateAppSettings.ps1
@@ -76,7 +82,20 @@ Responsibilities of the consuming project:
 
 ---
 
-## Deployment Flow
+## Docker Strategy
+
+Added for Vendlo's Contabo VPS (see `TechieStephen/infrastructure` and `trada-docs/docs/Infrastructure_Deployment_Architecture.md` for the VPS side). Deliberately has no PowerShell scripts of its own:
+
+- `build-docker.yml` needs no toolkit checkout, `docker/build-push-action` does the whole build+push from its inputs (`image_name`, `context`, `dockerfile`) alone. Tags every image with both the commit SHA (immutable) and the branch name (a floating tag, `:uat`/`:production`).
+- `deploy-docker-uat.yml` / `deploy-docker-prod.yml` build a `.env` file from the GitHub Environment's vars+secrets (mirrors the Web Deploy path's generic-forwarding trick, just without a PowerShell script or a JSON file to patch), copy it and the app's own `docker-compose.yml` to the VPS via `appleboy/scp-action`, then `appleboy/ssh-action` logs into GHCR and runs `docker compose pull && docker compose up -d`.
+- No `appsettings.config.ps1` equivalent, config reaches the container as real environment variables, which ASP.NET Core (and most frameworks) already read natively. The toolkit still never needs to know what any of those variable names mean.
+- Runs on `ubuntu-latest`, not `windows-latest`, nothing here needs Windows.
+
+Responsibilities of a Docker-strategy consuming project: own a `docker-compose.yml` at its repo root referencing each image as `image: <registry>/<name>:${TAG}`, apply Caddy/Prometheus/backup Docker labels per `infrastructure`'s README ("Labels applications must set"), and configure `VPS_HOST`/`VPS_DEPLOY_USER` (Variables) plus `VPS_SSH_PRIVATE_KEY`/`GHCR_PAT`/its own app secrets (Secrets) on its `UAT`/`Production` GitHub Environments.
+
+---
+
+## Deployment Flow (Web Deploy / IIS)
 
 ```text
 Push to uat/production (main is trunk-only, never deployed)
@@ -107,6 +126,37 @@ Notes:
 - `deploy-uat.yml` / `deploy-prod.yml` run on `windows-latest` because Web Deploy (`msdeploy.exe`) is Windows-only; `Deploy-WebDeploy.ps1` calls `Get-MSDeploy` up front to fail fast if it's missing. Neither workflow needs a .NET SDK anymore — `Deploy-WebDeploy.ps1` never invokes `dotnet`, only `msdeploy.exe` directly, so the deploy job doesn't depend on `bin`/`obj` state carrying over from the build job's runner.
 - A third environment, `test`, is reserved for running unit/integration tests (not a deploy target). It isn't wired into any workflow yet — see Roadmap.
 
+## Deployment Flow (Docker / VPS)
+
+```text
+Push to uat/production (main is trunk-only, never deployed)
+        │
+        ▼
+build-docker.yml × N  (one call per image an app builds)
+        │  docker build -> push to GHCR, tagged :<sha> and :<branch>
+        ▼
+deploy-docker-uat.yml / deploy-docker-prod.yml
+        │  build .env from every inherited var/secret + TAG=<branch>
+        ▼
+scp docker-compose.yml + .env to the VPS (appleboy/scp-action)
+        │
+        ▼
+ssh: docker login ghcr.io, docker compose pull, docker compose up -d
+        │
+        ▼
+Caddy/Prometheus/backups pick the new containers up automatically,
+by the Docker labels the app's own compose file sets (see
+TechieStephen/infrastructure's README), no infra-repo change needed
+        ▼
+Deployed
+```
+
+Notes:
+
+- Runs on `ubuntu-latest` throughout, nothing here needs Windows.
+- No PowerShell, no `scripts/`, no artifact upload/download between jobs — `build-docker.yml` pushes straight to GHCR and `deploy-docker-*.yml` pulls straight from it, the registry is the handoff, not a workflow artifact.
+- `TAG` is the one variable this toolkit injects itself (`github.ref_name`, i.e. the branch), every other line in `.env` comes from the calling repo's GitHub Environment. The app's `docker-compose.yml` references it as `image: <registry>/<name>:${TAG}`.
+
 ---
 
 ## Design Principles
@@ -126,10 +176,11 @@ Notes:
 - `Publish.ps1`, `Deploy-WebDeploy.ps1` (direct `msdeploy.exe` sync, no rebuild needed in the deploy job), `GenerateAppSettings.ps1`.
 - Reusable `build.yml` / `deploy-uat.yml` / `deploy-prod.yml` workflows with generic secret forwarding and environment gating.
 - Migrated `exampro-backend` to call the toolkit's reusable workflows instead of copying them.
+- Docker strategy: `build-docker.yml` / `deploy-docker-uat.yml` / `deploy-docker-prod.yml`, for Vendlo's Contabo VPS. Not yet exercised against a live app repo or a real VPS, see Next.
 
 ### Next
+- Actually run the Docker strategy end to end once Vendlo's `docker-compose.yml` and a provisioned VPS both exist, confirm the label-based Caddy/Prometheus/backup discovery (`TechieStephen/infrastructure`) actually picks up a freshly-deployed container correctly.
 - Add a `test.yml` reusable workflow that runs `dotnet test` against the `Test` GitHub Environment (for a test database connection string and similar). Triggered on PRs/pushes to any branch, not just `main`/`uat`, and doesn't deploy anything.
-- Add a health-check step after deploy (hit `SITE_URL` and confirm a 2xx response) with an automatic rollback path.
-- Support additional providers beyond Web Deploy (plain FTP, Azure App Service, Docker/Linux) as separate `Deploy-<Provider>.ps1` scripts + matching reusable workflows, once a second project needs one.
-- Add Pester tests for the PowerShell scripts.
+- Add a health-check step after deploy (hit `SITE_URL` and confirm a 2xx response) with an automatic rollback path. Applies to both strategies.
+- Add Pester tests for the PowerShell scripts (Web Deploy strategy).
 - Consider versioned workflow tags (`@v1`, `@v2`) once more than one consuming repo depends on this toolkit, so a breaking change in `main` doesn't break everyone at once.

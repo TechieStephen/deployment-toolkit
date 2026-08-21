@@ -1,0 +1,68 @@
+name: Docker Build and Push
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: "Full image reference without tag, e.g. ghcr.io/techiestephen/vendlo-api"
+        required: true
+        type: string
+      context:
+        description: "Build context, relative to the repo root (e.g. 'api' for a subfolder)"
+        required: false
+        type: string
+        default: "."
+      dockerfile:
+        description: "Path to the Dockerfile, relative to the repo root. Leave empty to default to '<context>/Dockerfile'"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # The caller's own job also needs `permissions: packages: write` --
+    # a reusable workflow's effective permissions are the intersection of
+    # both, this alone isn't enough on its own.
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # docker/build-push-action's own `file` default only resolves relative
+      # to context when `file` is omitted entirely, not when it's passed an
+      # empty string, so this has to be resolved explicitly. Matters for
+      # Vendlo's multi-container repo, where context is a subfolder like
+      # "api", not the repo root.
+      - name: Resolve Dockerfile path
+        id: resolve
+        run: |
+          if [ -n "${{ inputs.dockerfile }}" ]; then
+            echo "path=${{ inputs.dockerfile }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=${{ inputs.context }}/Dockerfile" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ steps.resolve.outputs.path }}
+          push: true
+          tags: |
+            ${{ inputs.image_name }}:${{ github.sha }}
+            ${{ inputs.image_name }}:${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
