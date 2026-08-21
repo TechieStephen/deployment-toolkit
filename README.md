@@ -98,8 +98,8 @@ Split what you configure in each [GitHub Environment](https://docs.github.com/ac
 
 ### Docker / VPS
 
-- **Variables:** `VPS_HOST`, `VPS_DEPLOY_USER` (the `deploy` user the `infrastructure` repo's Ansible run already created), plus anything your app needs at runtime that isn't sensitive.
-- **Secrets:** `VPS_SSH_PRIVATE_KEY` (the private half of the keypair whose public half is `infrastructure`'s `deploy_user_ssh_key` variable, the same keypair for every app since they all deploy as the same `deploy` user), `GHCR_PAT` (a PAT with `read:packages`, used by the VPS to pull images from GHCR), plus anything your app needs at runtime that is sensitive (`DB_CONNECTION`, `JWT_SECRET`, `PAYSTACK_SECRET_KEY`, ...).
+- **Variables:** `VPS_HOST`, `VPS_DEPLOY_USER` (the `deploy` user the `infrastructure-vps` repo's Ansible run already created), plus anything your app needs at runtime that isn't sensitive.
+- **Secrets:** `VPS_SSH_PRIVATE_KEY` (the private half of the keypair whose public half is `infrastructure-vps`'s `deploy_user_ssh_key` variable, the same keypair for every app since they all deploy as the same `deploy` user), `GHCR_PAT` (a PAT with `read:packages`, used by the VPS to pull images from GHCR), plus anything your app needs at runtime that is sensitive (`DB_CONNECTION`, `JWT_SECRET`, `PAYSTACK_SECRET_KEY`, ...).
 
 Using GitHub Environments this way lets you reuse the same variable/secret names across `UAT` and `Production` with different values per environment, and lets you gate production with required reviewers.
 
