@@ -84,7 +84,7 @@ Responsibilities of the consuming project:
 
 ## Docker Strategy
 
-Added for Vendlo's Contabo VPS (see `TechieStephen/infrastructure-vps` and `trada-docs/docs/Infrastructure_Deployment_Architecture.md` for the VPS side). Deliberately has no PowerShell scripts of its own:
+Added for Vendeck's Contabo VPS (see `TechieStephen/infrastructure-vps` and `trada-docs/docs/Infrastructure_Deployment_Architecture.md` for the VPS side). Deliberately has no PowerShell scripts of its own:
 
 - `build-docker.yml` needs no toolkit checkout, `docker/build-push-action` does the whole build+push from its inputs (`image_name`, `context`, `dockerfile`) alone. Tags every image with both the commit SHA (immutable) and the branch name (a floating tag, `:uat`/`:production`).
 - `deploy-docker-uat.yml` / `deploy-docker-prod.yml` build a `.env` file from the GitHub Environment's vars+secrets (mirrors the Web Deploy path's generic-forwarding trick, just without a PowerShell script or a JSON file to patch), copy it and the app's own `docker-compose.yml` to the VPS via `appleboy/scp-action`, then `appleboy/ssh-action` logs into GHCR and runs `docker compose pull && docker compose up -d`.
@@ -176,10 +176,10 @@ Notes:
 - `Publish.ps1`, `Deploy-WebDeploy.ps1` (direct `msdeploy.exe` sync, no rebuild needed in the deploy job), `GenerateAppSettings.ps1`.
 - Reusable `build.yml` / `deploy-uat.yml` / `deploy-prod.yml` workflows with generic secret forwarding and environment gating.
 - Migrated `exampro-backend` to call the toolkit's reusable workflows instead of copying them.
-- Docker strategy: `build-docker.yml` / `deploy-docker-uat.yml` / `deploy-docker-prod.yml`, for Vendlo's Contabo VPS. Not yet exercised against a live app repo or a real VPS, see Next.
+- Docker strategy: `build-docker.yml` / `deploy-docker-uat.yml` / `deploy-docker-prod.yml`, for Vendeck's Contabo VPS. Not yet exercised against a live app repo or a real VPS, see Next.
 
 ### Next
-- Actually run the Docker strategy end to end once Vendlo's `docker-compose.yml` and a provisioned VPS both exist, confirm the label-based Caddy/Prometheus/backup discovery (`TechieStephen/infrastructure-vps`) actually picks up a freshly-deployed container correctly.
+- Actually run the Docker strategy end to end once Vendeck's `docker-compose.yml` and a provisioned VPS both exist, confirm the label-based Caddy/Prometheus/backup discovery (`TechieStephen/infrastructure-vps`) actually picks up a freshly-deployed container correctly.
 - Add a `test.yml` reusable workflow that runs `dotnet test` against the `Test` GitHub Environment (for a test database connection string and similar). Triggered on PRs/pushes to any branch, not just `main`/`uat`, and doesn't deploy anything.
 - Add a health-check step after deploy (hit `SITE_URL` and confirm a 2xx response) with an automatic rollback path. Applies to both strategies.
 - Add Pester tests for the PowerShell scripts (Web Deploy strategy).

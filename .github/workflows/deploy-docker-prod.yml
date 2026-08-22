@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       compose_project_dir:
-        description: "Absolute path on the VPS where this app's docker-compose.yml lives, e.g. /opt/apps/vendlo"
+        description: "Absolute path on the VPS where this app's docker-compose.yml lives, e.g. /opt/apps/vendeck"
         required: true
         type: string
     secrets:

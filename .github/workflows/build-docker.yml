@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       image_name:
-        description: "Full image reference without tag, e.g. ghcr.io/techiestephen/vendlo-api"
+        description: "Full image reference without tag, e.g. ghcr.io/techiestephen/vendeck-api"
         required: true
         type: string
       context:
@@ -44,7 +44,7 @@ jobs:
       # docker/build-push-action's own `file` default only resolves relative
       # to context when `file` is omitted entirely, not when it's passed an
       # empty string, so this has to be resolved explicitly. Matters for
-      # Vendlo's multi-container repo, where context is a subfolder like
+      # Vendeck's multi-container repo, where context is a subfolder like
       # "api", not the repo root.
       - name: Resolve Dockerfile path
         id: resolve

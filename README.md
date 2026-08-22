@@ -67,10 +67,10 @@ A `test` environment/workflow (for running unit tests, not deploying anywhere) i
 
 ### Docker / VPS
 
-- `.github/workflows/build-docker.yml` — checks out the app repo, builds an image from the given `context`/`dockerfile`, pushes it to GHCR tagged with both the commit SHA (immutable, for rollback reference) and the branch name (a floating tag, e.g. `:uat`/`:production`). Call it once per image an app builds, Vendlo calls it three times (storefront, dashboard, api).
+- `.github/workflows/build-docker.yml` — checks out the app repo, builds an image from the given `context`/`dockerfile`, pushes it to GHCR tagged with both the commit SHA (immutable, for rollback reference) and the branch name (a floating tag, e.g. `:uat`/`:production`). Call it once per image an app builds, Vendeck calls it three times (storefront, dashboard, api).
 - `.github/workflows/deploy-docker-uat.yml` / `deploy-docker-prod.yml` — build a `.env` file from the `UAT`/`Production` GitHub Environment's vars and secrets (same generic-forwarding approach as the Web Deploy path, just handed to the container as environment variables instead of patched into `appsettings.json`), copy it plus the app repo's own `docker-compose.yml` to the VPS, then SSH in and run `docker compose pull && docker compose up -d`. Runs on `ubuntu-latest`, no Windows runner needed.
 
-The app's `docker-compose.yml` should reference each image by the `TAG` variable the deploy workflow injects (e.g. `image: ghcr.io/techiestephen/vendlo-api:${TAG}`), so `docker compose pull` always grabs exactly what `build-docker.yml` just pushed for that branch.
+The app's `docker-compose.yml` should reference each image by the `TAG` variable the deploy workflow injects (e.g. `image: ghcr.io/techiestephen/vendeck-api:${TAG}`), so `docker compose pull` always grabs exactly what `build-docker.yml` just pushed for that branch.
 
 ## App settings pattern (Web Deploy)
 
@@ -140,7 +140,7 @@ jobs:
 
 ### Docker / VPS
 
-An app with more than one container (Vendlo: storefront, dashboard, api) calls `build-docker.yml` once per image, each needs `permissions: packages: write` at the caller job level too, a reusable workflow's effective permissions are the intersection of both:
+An app with more than one container (Vendeck: storefront, dashboard, api) calls `build-docker.yml` once per image, each needs `permissions: packages: write` at the caller job level too, a reusable workflow's effective permissions are the intersection of both:
 
 ```yaml
 name: CI/CD
@@ -157,7 +157,7 @@ jobs:
       packages: write
     uses: TechieStephen/deployment-toolkit/.github/workflows/build-docker.yml@main
     with:
-      image_name: ghcr.io/techiestephen/vendlo-api
+      image_name: ghcr.io/techiestephen/vendeck-api
       context: api
 
   build-storefront:
@@ -166,7 +166,7 @@ jobs:
       packages: write
     uses: TechieStephen/deployment-toolkit/.github/workflows/build-docker.yml@main
     with:
-      image_name: ghcr.io/techiestephen/vendlo-storefront
+      image_name: ghcr.io/techiestephen/vendeck-storefront
       context: storefront
 
   build-dashboard:
@@ -175,7 +175,7 @@ jobs:
       packages: write
     uses: TechieStephen/deployment-toolkit/.github/workflows/build-docker.yml@main
     with:
-      image_name: ghcr.io/techiestephen/vendlo-dashboard
+      image_name: ghcr.io/techiestephen/vendeck-dashboard
       context: dashboard
 
   deploy-uat:
@@ -183,7 +183,7 @@ jobs:
     needs: [build-api, build-storefront, build-dashboard]
     uses: TechieStephen/deployment-toolkit/.github/workflows/deploy-docker-uat.yml@main
     with:
-      compose_project_dir: /opt/apps/vendlo
+      compose_project_dir: /opt/apps/vendeck
     secrets: inherit
 
   deploy-prod:
@@ -191,7 +191,7 @@ jobs:
     needs: [build-api, build-storefront, build-dashboard]
     uses: TechieStephen/deployment-toolkit/.github/workflows/deploy-docker-prod.yml@main
     with:
-      compose_project_dir: /opt/apps/vendlo
+      compose_project_dir: /opt/apps/vendeck
     secrets: inherit
 ```
 
