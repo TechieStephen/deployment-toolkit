@@ -22,14 +22,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # DEPLOY_MECHANISM_KEYS excludes the ones this same workflow already consumes directly via
+      # its own ${{ vars.* }}/${{ secrets.* }} expressions above/below -- they have no reason to
+      # also end up inside the deployed app's own .env/container environment. Confirmed the hard
+      # way (on the UAT variant of this workflow): VPS_SSH_PRIVATE_KEY (multi-line PEM) broke
+      # docker compose's own .env parser outright ("unexpected character '+' in variable name" on
+      # one of the key's base64 body lines) -- but the real problem is a private key sitting in an
+      # app container's environment at all, parsing failure or not. github_token is GITHUB_TOKEN
+      # (present because a caller job typically uses `secrets: inherit`), also mechanism-only.
       - name: Build .env from environment configuration
         shell: bash
         env:
           VARS_CONTEXT: ${{ toJSON(vars) }}
           SECRETS_CONTEXT: ${{ toJSON(secrets) }}
+          DEPLOY_MECHANISM_KEYS: "vps_host vps_deploy_user vps_ssh_private_key ghcr_pat github_token"
         run: |
-          jq -r 'to_entries[] | "\(.key)=\(.value)"' <<< "$VARS_CONTEXT" > deploy.env
-          jq -r 'to_entries[] | "\(.key)=\(.value)"' <<< "$SECRETS_CONTEXT" >> deploy.env
+          jq -r --arg exclude "$DEPLOY_MECHANISM_KEYS" \
+            'to_entries[] | select(($exclude | ascii_downcase | split(" ") | index(.key | ascii_downcase)) == null) | "\(.key)=\(.value)"' \
+            <<< "$VARS_CONTEXT" > deploy.env
+          jq -r --arg exclude "$DEPLOY_MECHANISM_KEYS" \
+            'to_entries[] | select(($exclude | ascii_downcase | split(" ") | index(.key | ascii_downcase)) == null) | "\(.key)=\(.value)"' \
+            <<< "$SECRETS_CONTEXT" >> deploy.env
           echo "TAG=${{ github.ref_name }}" >> deploy.env
 
       - name: Copy compose file and environment to the VPS
