@@ -68,7 +68,16 @@ jobs:
           host: ${{ vars.VPS_HOST }}
           username: ${{ vars.VPS_DEPLOY_USER }}
           key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          # set -e is not the ssh-action's default -- without it, a real deploy silently no-op'd
+          # (docker login denied -> pull unauthorized -> Compose's own build-from-source fallback
+          # then also failed with no Dockerfile on the VPS to build from) while this step still
+          # reported "Successfully executed commands to all hosts.", because each failing command
+          # just fell through to the next line instead of stopping the script. Confirmed on a real
+          # UAT deploy: green CI, un-updated container, for two deploys in a row before this was
+          # caught. docker image prune -f staying last and unaffected by set -e's exit-on-failure
+          # is fine -- nothing to prune if nothing above it changed.
           script: |
+            set -euo pipefail
             cd ${{ inputs.compose_project_dir }}
             mv deploy.env .env
             echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
