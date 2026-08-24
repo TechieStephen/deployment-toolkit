@@ -37,12 +37,14 @@ jobs:
           SECRETS_CONTEXT: ${{ toJSON(secrets) }}
           DEPLOY_MECHANISM_KEYS: "vps_host vps_deploy_user vps_ssh_private_key ghcr_pat github_token"
         run: |
-          jq -r --arg exclude "$DEPLOY_MECHANISM_KEYS" \
-            'to_entries[] | select(($exclude | ascii_downcase | split(" ") | index(.key | ascii_downcase)) == null) | "\(.key)=\(.value)"' \
-            <<< "$VARS_CONTEXT" > deploy.env
-          jq -r --arg exclude "$DEPLOY_MECHANISM_KEYS" \
-            'to_entries[] | select(($exclude | ascii_downcase | split(" ") | index(.key | ascii_downcase)) == null) | "\(.key)=\(.value)"' \
-            <<< "$SECRETS_CONTEXT" >> deploy.env
+          # Piping the exclude array straight into index(.key) resets `.` to the array itself for
+          # evaluating index's own argument, so `.key` fails with "Cannot index array with string
+          # \"key\"" -- confirmed the hard way. Binding it to $excludeList first avoids the reset:
+          # a $var reference doesn't touch `.`, so `.key` inside select() still means the current
+          # to_entries[] object, not whatever the last `|` happened to produce.
+          FILTER='($exclude | ascii_downcase | split(" ")) as $excludeList | to_entries[] | select((.key | ascii_downcase | IN($excludeList[])) | not) | "\(.key)=\(.value)"'
+          jq -r --arg exclude "$DEPLOY_MECHANISM_KEYS" "$FILTER" <<< "$VARS_CONTEXT" > deploy.env
+          jq -r --arg exclude "$DEPLOY_MECHANISM_KEYS" "$FILTER" <<< "$SECRETS_CONTEXT" >> deploy.env
           echo "TAG=${{ github.ref_name }}" >> deploy.env
 
       - name: Copy compose file and environment to the VPS
