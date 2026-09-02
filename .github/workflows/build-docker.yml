@@ -55,6 +55,19 @@ jobs:
             echo "path=${{ inputs.context }}/Dockerfile" >> "$GITHUB_OUTPUT"
           fi
 
+      # On a pull_request event github.ref_name is "<pr-number>/merge" -- the slash is not a legal
+      # Docker tag character, so build-push-action fails before it builds anything. Map every
+      # character outside Docker's allowed tag set [A-Za-z0-9_.-] to '-', drop a leading '.'/'-'
+      # (also illegal as the first char), and cap at 128. A normal branch name (uat, production,
+      # main) passes through unchanged.
+      - name: Compute ref tag
+        id: reftag
+        run: |
+          raw='${{ github.ref_name }}'
+          safe=$(printf '%s' "$raw" | sed 's/[^A-Za-z0-9_.-]/-/g; s/^[.-]\+//' | cut -c1-128)
+          [ -n "$safe" ] || safe='build'
+          echo "value=$safe" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -63,6 +76,6 @@ jobs:
           push: true
           tags: |
             ${{ inputs.image_name }}:${{ github.sha }}
-            ${{ inputs.image_name }}:${{ github.ref_name }}
+            ${{ inputs.image_name }}:${{ steps.reftag.outputs.value }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
