@@ -7,6 +7,10 @@ on:
         description: "Absolute path on the VPS where this app's docker-compose.yml lives, e.g. /opt/apps/vendeck"
         required: true
         type: string
+      health_check_url:
+        description: "Optional: a URL to poll after deploying, e.g. https://api.vendeck.ng/health. Deploy fails if it never returns 200. Leave unset for an app with no health endpoint."
+        required: false
+        type: string
     secrets:
       VPS_SSH_PRIVATE_KEY:
         required: true
@@ -77,3 +81,24 @@ jobs:
             docker compose pull
             docker compose up -d
             docker image prune -f
+
+      # Runs from the GitHub Actions runner, not the VPS -- it's checking the same public path a
+      # real client would hit (through Cloudflare/Caddy), not just "did the container start", so it
+      # also catches a container that's up but the app inside never became ready. Retries with a
+      # short delay since docker compose up -d returning doesn't mean the app inside has finished
+      # starting yet (migrations, Hangfire storage init, etc.).
+      - name: Verify health endpoint after deploy
+        if: inputs.health_check_url != ''
+        shell: bash
+        run: |
+          for attempt in $(seq 1 10); do
+            status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${{ inputs.health_check_url }}" || echo "000")
+            if [ "$status" = "200" ]; then
+              echo "Health check passed (attempt $attempt, status $status)"
+              exit 0
+            fi
+            echo "Attempt $attempt: got status $status, retrying in 3s..."
+            sleep 3
+          done
+          echo "::error::Health check at ${{ inputs.health_check_url }} never returned 200 after 10 attempts"
+          exit 1
